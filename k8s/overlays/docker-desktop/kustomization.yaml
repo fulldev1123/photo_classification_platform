@@ -1,10 +1,3 @@
-# Kustomize overlay for running the platform on Docker Desktop's built-in
-# Kubernetes cluster. Reuses images already built locally by
-# `docker compose build` (no registry push required, because Docker Desktop's
-# kubelet shares the Docker daemon's image store).
-#
-# Apply with:
-#   kubectl apply -k k8s/overlays/docker-desktop
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 

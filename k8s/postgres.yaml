@@ -25,6 +25,7 @@ spec:
       containers:
         - name: postgres
           image: postgres:16-alpine
+          args: ["postgres", "-c", "max_connections=200"]
           ports: [{ containerPort: 5432 }]
           env:
             - { name: POSTGRES_USER, value: auth }
@@ -66,6 +67,9 @@ spec:
       containers:
         - name: postgres
           image: postgres:16-alpine
+          # Headroom for app pools at peak HPA fan-out (submission-service: up
+          # to 12 replicas x ~10 conns). Reserve room for migrations/admin.
+          args: ["postgres", "-c", "max_connections=200"]
           ports: [{ containerPort: 5432 }]
           env:
             - { name: POSTGRES_USER, value: submission }

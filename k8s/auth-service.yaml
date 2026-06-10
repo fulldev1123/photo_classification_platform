@@ -18,6 +18,8 @@ spec:
   template:
     metadata: { labels: { app: auth-service } }
     spec:
+      # Allow in-flight requests to finish; preStop drains before SIGTERM.
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 1001
@@ -38,11 +40,17 @@ spec:
               valueFrom: { secretKeyRef: { name: platform-secrets, key: ADMIN_PASSWORD } }
           envFrom:
             - configMapRef: { name: platform-config }
+          lifecycle:
+            preStop:
+              # Let Service endpoints converge before the server stops accepting.
+              exec: { command: ["sh", "-c", "sleep 5"] }
           readinessProbe:
-            httpGet: { path: /health, port: 8000 }
+            # DB-aware: a pod with an unreachable database leaves the rotation.
+            httpGet: { path: /health/ready, port: 8000 }
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
+            # Shallow: stays green on a slow DB so the pod is not kill-looped.
             httpGet: { path: /health, port: 8000 }
             initialDelaySeconds: 20
             periodSeconds: 20
