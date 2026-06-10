@@ -1,20 +1,41 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { ErrorBanner } from "../../components/Banner";
 import { apiClient, type SubmissionRecord } from "../../lib/apiClient";
 
+const PAGE_SIZE = 25;
+
 export default function MySubmissionsPage() {
   const [submissions, setSubmissions] = useState<SubmissionRecord[] | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // Keyset pagination: each page asks for items created before the oldest one
+  // we already hold, so history stays fully reachable regardless of size.
+  const loadPage = useCallback(async (before?: string) => {
+    const page = await apiClient.mySubmissions({ limit: PAGE_SIZE, before });
+    setHasMore(page.length === PAGE_SIZE);
+    setSubmissions((current) => (before ? [...(current ?? []), ...page] : page));
+  }, []);
 
   useEffect(() => {
-    apiClient
-      .mySubmissions()
-      .then(setSubmissions)
-      .catch((error: unknown) =>
-        setErrorMessage(error instanceof Error ? error.message : String(error)),
-      );
-  }, []);
+    loadPage().catch((error: unknown) =>
+      setErrorMessage(error instanceof Error ? error.message : String(error)),
+    );
+  }, [loadPage]);
+
+  async function loadMore() {
+    if (!submissions || submissions.length === 0) return;
+    setIsLoadingMore(true);
+    try {
+      await loadPage(submissions[submissions.length - 1].created_at);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }
 
   if (errorMessage) return <ErrorBanner message={errorMessage} />;
   if (!submissions) return <div className="p-8 text-center text-zinc-500">Loading…</div>;
@@ -69,6 +90,18 @@ export default function MySubmissionsPage() {
           </tbody>
         </table>
       </div>
+      {hasMore && (
+        <div className="mt-4 flex justify-center">
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={loadMore}
+            disabled={isLoadingMore}
+          >
+            {isLoadingMore ? "Loading…" : "Load more"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
