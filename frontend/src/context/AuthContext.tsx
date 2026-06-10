@@ -14,6 +14,7 @@ import {
   readStoredToken,
   storeToken,
 } from "../lib/apiClient";
+import { clearSubmissionDraft } from "../lib/draftStorage";
 
 export type AuthenticatedAccount = {
   id: string;
@@ -67,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     clearStoredToken();
+    clearSubmissionDraft();
     setAccount(null);
   }, []);
 
