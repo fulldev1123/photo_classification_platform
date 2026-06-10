@@ -1,0 +1,23 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [
+    "**/alembic/versions/*.py",
+    "**/.venv/**",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = [
+    "E501",  # line length handled by formatter
+    "B008",  # FastAPI uses Depends() in defaults
+    "UP042", # `(str, Enum)` pattern is intentional for FastAPI/Pydantic compat
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["E402"]
+"**/conftest.py" = ["E402"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

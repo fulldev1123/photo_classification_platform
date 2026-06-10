@@ -1,0 +1,44 @@
+# Requires an ingress controller (e.g. nginx-ingress) and cert-manager for TLS.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: photo-platform
+  namespace: photo-platform
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "8m"
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [api.example.com]
+      secretName: photo-platform-tls
+  rules:
+    - host: api.example.com
+      http:
+        paths:
+          - path: /auth
+            pathType: Prefix
+            backend:
+              service:
+                name: auth-service
+                port: { number: 80 }
+          - path: /submissions
+            pathType: Prefix
+            backend:
+              service:
+                name: submission-service
+                port: { number: 80 }
+          - path: /admin
+            pathType: Prefix
+            backend:
+              service:
+                name: submission-service
+                port: { number: 80 }
+          # Catch-all: serve the SPA from nginx for any other path.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port: { number: 80 }

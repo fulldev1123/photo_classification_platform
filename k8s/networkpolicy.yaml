@@ -1,0 +1,34 @@
+# Default-deny + explicit allows. Requires a CNI that enforces NetworkPolicy
+# (Calico, Cilium, etc.).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: photo-platform
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-services
+  namespace: photo-platform
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app, operator: In, values: [auth-service, submission-service] }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
+  egress:
+    - to:
+        - podSelector: { matchLabels: { app: auth-db } }
+        - podSelector: { matchLabels: { app: submission-db } }
+        - podSelector: { matchLabels: { app: minio } }
+    - to:  # DNS
+        - namespaceSelector: {}
+          podSelector: { matchLabels: { k8s-app: kube-dns } }
+      ports: [{ protocol: UDP, port: 53 }]

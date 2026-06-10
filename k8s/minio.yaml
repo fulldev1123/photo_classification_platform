@@ -1,0 +1,46 @@
+# Demo MinIO. In production, prefer managed S3 / GCS / Azure Blob, or run the
+# MinIO operator with distributed deployment.
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: photo-platform
+spec:
+  selector: { app: minio }
+  ports:
+    - { name: s3,      port: 9000, targetPort: 9000 }
+    - { name: console, port: 9001, targetPort: 9001 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: photo-platform
+spec:
+  serviceName: minio
+  replicas: 1
+  selector: { matchLabels: { app: minio } }
+  template:
+    metadata: { labels: { app: minio } }
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:RELEASE.2024-09-13T20-26-02Z
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom: { secretKeyRef: { name: platform-secrets, key: S3_ACCESS_KEY } }
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom: { secretKeyRef: { name: platform-secrets, key: S3_SECRET_KEY } }
+          ports:
+            - { containerPort: 9000 }
+            - { containerPort: 9001 }
+          readinessProbe:
+            httpGet: { path: /minio/health/ready, port: 9000 }
+            initialDelaySeconds: 10
+          volumeMounts: [{ name: data, mountPath: /data }]
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 20Gi } }

@@ -1,0 +1,74 @@
+# Kustomize overlay for running the platform on Docker Desktop's built-in
+# Kubernetes cluster. Reuses images already built locally by
+# `docker compose build` (no registry push required, because Docker Desktop's
+# kubelet shares the Docker daemon's image store).
+#
+# Apply with:
+#   kubectl apply -k k8s/overlays/docker-desktop
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: photo-platform
+
+resources:
+  - ../../namespace.yaml
+  - ../../postgres.yaml
+  - ../../minio.yaml
+  - ../../auth-service.yaml
+  - ../../submission-service.yaml
+  - ../../frontend.yaml
+  - secrets.yaml
+
+# Point the base manifests at the locally-built images. Docker Desktop's
+# Kubernetes shares the Docker daemon, so these images are already present
+# and `imagePullPolicy: IfNotPresent` (set in the base) will find them.
+images:
+  - name: ghcr.io/OWNER/auth-service
+    newName: photo_classification_platform-auth-service
+    newTag: latest
+  - name: ghcr.io/OWNER/submission-service
+    newName: photo_classification_platform-submission-service
+    newTag: latest
+  - name: ghcr.io/OWNER/frontend
+    newName: photo_classification_platform-frontend
+    newTag: latest
+
+# Expose the services on localhost via the LoadBalancer integration in
+# Docker Desktop. The ports match what the frontend bundle was built against
+# (VITE_AUTH_API=http://localhost:8001, VITE_SUBMISSION_API=http://localhost:8002).
+# JSON 6902 patches are used (not strategic merge) so spec.ports is fully
+# replaced -- otherwise the base's port 80 would remain and multiple services
+# would fight over localhost:80.
+patches:
+  - target: { kind: Service, name: auth-service }
+    patch: |-
+      - op: add
+        path: /spec/type
+        value: LoadBalancer
+      - op: replace
+        path: /spec/ports
+        value:
+          - { name: http, port: 8001, targetPort: 8000 }
+  - target: { kind: Service, name: submission-service }
+    patch: |-
+      - op: add
+        path: /spec/type
+        value: LoadBalancer
+      - op: replace
+        path: /spec/ports
+        value:
+          - { name: http, port: 8002, targetPort: 8000 }
+  - target: { kind: Service, name: frontend }
+    patch: |-
+      - op: add
+        path: /spec/type
+        value: LoadBalancer
+      - op: replace
+        path: /spec/ports
+        value:
+          - { name: http, port: 5173, targetPort: 80 }
+  - target: { kind: Service, name: minio }
+    patch: |-
+      - op: add
+        path: /spec/type
+        value: LoadBalancer

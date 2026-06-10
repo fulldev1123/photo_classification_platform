@@ -1,0 +1,83 @@
+# Demo Postgres StatefulSets. In production, use a managed DB
+# (RDS / Cloud SQL / Azure DB) or an operator (CloudNativePG, Zalando).
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-db
+  namespace: photo-platform
+spec:
+  selector: { app: auth-db }
+  ports: [{ port: 5432, targetPort: 5432 }]
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: auth-db
+  namespace: photo-platform
+spec:
+  serviceName: auth-db
+  replicas: 1
+  selector: { matchLabels: { app: auth-db } }
+  template:
+    metadata: { labels: { app: auth-db } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports: [{ containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_USER, value: auth }
+            - { name: POSTGRES_DB,   value: auth_db }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: platform-secrets, key: AUTH_DB_PASSWORD } }
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "auth"] }
+            initialDelaySeconds: 5
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 5Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: submission-db
+  namespace: photo-platform
+spec:
+  selector: { app: submission-db }
+  ports: [{ port: 5432, targetPort: 5432 }]
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: submission-db
+  namespace: photo-platform
+spec:
+  serviceName: submission-db
+  replicas: 1
+  selector: { matchLabels: { app: submission-db } }
+  template:
+    metadata: { labels: { app: submission-db } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports: [{ containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_USER, value: submission }
+            - { name: POSTGRES_DB,   value: submission_db }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: platform-secrets, key: SUBMISSION_DB_PASSWORD } }
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "submission"] }
+            initialDelaySeconds: 5
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 10Gi } }
