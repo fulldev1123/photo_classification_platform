@@ -1,3 +1,58 @@
+# Deliverables
+
+Quick map of where each deliverable lives. TL;DR: it's all in this repo.
+
+| # | Deliverable | Status | Where |
+| --- | --- | --- | --- |
+| 1 | GitHub repo with source + docs | ✅ | this repo · [`README.md`](./README.md) · [`docs/`](./docs) |
+| 2 | docker-compose + env examples | ✅ | [`docker-compose.yml`](./docker-compose.yml) · [`.env.example`](./.env.example) · [`frontend/.env.example`](./frontend/.env.example) |
+| 3 | CI/CD configuration | ✅ | [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) |
+| 4 | Architecture block diagram (draw.io) | ✅ | [`docs/architecture_diagram.png`](./docs/architecture_diagram.png) · source [`docs/architecture.drawio`](./docs/architecture.drawio) |
+
+---
+
+## 1. Source + docs
+Two FastAPI microservices (`auth-service`, `submission-service`) + a React/Tailwind
+SPA, all containerised. Repo: `github.com/fulldev1123/photo_classification_platform`.
+Start at the [README](./README.md); scaling notes and trade-offs are in
+[`docs/`](./docs).
+
+## 2. docker-compose + env examples
+One command brings up the whole stack (both services, two Postgres DBs, MinIO,
+frontend):
+
+```bash
+cp .env.example .env        # tweak JWT_SECRET, ADMIN_PASSWORD, …
+docker compose up --build
+```
+
+Env templates: [`.env.example`](./.env.example) (backend + infra) and
+[`frontend/.env.example`](./frontend/.env.example) (the two API URLs the SPA is
+built against). Nothing secret is committed — copy → fill in → go.
+
+## 3. CI/CD
+GitHub Actions ([`ci.yml`](./.github/workflows/ci.yml)), four stages:
+
+1. **lint-test** — ruff + pytest per service (matrix).
+2. **frontend** — `npm ci` → typecheck → vitest → build.
+3. **build-and-push** — on `main`, build & push `auth-service`,
+   `submission-service`, `frontend` images to GHCR (`:sha-<commit>` + `:latest`).
+4. **deploy** — `kubectl apply` of the `k8s/` manifests, gated by a `production`
+   environment. It's **wired but left off by default** (`if: false`) so it
+   doesn't fire without a real cluster + `KUBECONFIG` secret — flip it on when
+   you've got a target. (This is the "explain, not auto-run" bit.)
+
+Locally it's already proven out: deployed to Docker Desktop Kubernetes via the
+[`k8s/overlays/docker-desktop`](./k8s/overlays/docker-desktop) overlay.
+
+## 4. Architecture diagram
+Made in draw.io. Rendered PNG: [`docs/architecture_diagram.png`](./docs/architecture_diagram.png);
+editable source: [`docs/architecture.drawio`](./docs/architecture.drawio) (open at
+<https://app.diagrams.net>). Shows the SPA → ingress → the two services → their
+Postgres DBs + MinIO, plus the shared-JWT trust and presigned-URL photo path.
+
+---
+
 # Photo Classification Platform
 
 Cloud-deployable platform where users register, upload a photo with metadata,
