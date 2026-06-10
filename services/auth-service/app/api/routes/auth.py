@@ -23,7 +23,9 @@ from ...schemas import (
 )
 
 router = APIRouter(tags=["auth"])
-rate_limiter = Limiter(key_func=get_remote_address)
+rate_limiter = Limiter(
+    key_func=get_remote_address, storage_uri=settings.rate_limit_storage_uri
+)
 bearer_scheme = HTTPBearer(auto_error=True)
 
 

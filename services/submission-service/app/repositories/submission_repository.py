@@ -38,13 +38,23 @@ class SubmissionRepository:
     def get(self, submission_id: uuid.UUID) -> Submission | None:
         return self._session.get(Submission, submission_id)
 
-    def list_for_owner(self, owner_id: uuid.UUID, limit: int = 200) -> list[Submission]:
-        statement = (
-            select(Submission)
-            .where(Submission.owner_id == owner_id)
-            .order_by(Submission.created_at.desc())
-            .limit(limit)
-        )
+    def list_for_owner(
+        self,
+        owner_id: uuid.UUID,
+        limit: int = 50,
+        before: datetime | None = None,
+    ) -> list[Submission]:
+        """Keyset-paginated list of an owner's submissions, newest first.
+
+        ``before`` is a cursor on ``created_at`` (pass the oldest item the
+        client already holds) so paging stays O(page) regardless of history
+        size, served straight off the ``ix_submissions_owner_id`` /
+        ``ix_submissions_created_at`` indexes.
+        """
+        statement = select(Submission).where(Submission.owner_id == owner_id)
+        if before is not None:
+            statement = statement.where(Submission.created_at < before)
+        statement = statement.order_by(Submission.created_at.desc()).limit(limit)
         return list(self._session.execute(statement).scalars().all())
 
     def search(

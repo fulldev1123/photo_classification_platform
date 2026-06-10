@@ -1,6 +1,7 @@
 import io
 import logging
 import uuid
+from datetime import datetime
 
 from fastapi import (
     APIRouter,
@@ -8,6 +9,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     Request,
     UploadFile,
     status,
@@ -30,11 +32,41 @@ from ..serializers import serialize_submission
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["submissions"])
-rate_limiter = Limiter(key_func=get_remote_address)
+rate_limiter = Limiter(
+    key_func=get_remote_address, storage_uri=settings.rate_limit_storage_uri
+)
 
 _ACCEPTED_CONTENT_TYPES = {
     t.strip() for t in settings.allowed_image_types.split(",") if t.strip()
 }
+
+
+def _read_upload(photo: UploadFile, max_bytes: int) -> bytes:
+    """Read the upload in bounded chunks, aborting with 413 the moment the
+    running total exceeds the cap — so an oversized body is rejected mid-stream
+    instead of being fully buffered into memory."""
+    chunks: list[bytes] = []
+    total = 0
+    source = photo.file  # underlying SpooledTemporaryFile (sync)
+    while True:
+        chunk = source.read(64 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(
+                status_code=413, detail=f"file too large; max {max_bytes} bytes"
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _safe_filename(name: str | None) -> str:
+    """Strip path components and unusual characters from the client filename
+    before embedding it in the object key."""
+    base = (name or "photo").replace("\\", "/").rsplit("/", 1)[-1]
+    cleaned = "".join(c for c in base if c.isalnum() or c in "._-")
+    return (cleaned or "photo")[:100]
 
 
 def enforce_upload_policy(content: bytes, content_type: str) -> tuple[int, int]:
@@ -77,7 +109,7 @@ def enforce_upload_policy(content: bytes, content_type: str) -> tuple[int, int]:
     summary="Create a submission (photo + metadata)",
 )
 @rate_limiter.limit(settings.submit_rate_limit)
-async def create_submission(
+def create_submission(
     request: Request,
     full_name: str = Form(...),
     age: int = Form(...),
@@ -89,6 +121,8 @@ async def create_submission(
     session: Session = Depends(get_session),
     user: AuthenticatedUser = Depends(get_authenticated_user),
 ):
+    # Sync handler: FastAPI runs it in a threadpool, so the blocking image
+    # decode + classify + S3 upload + DB commit never stall the event loop.
     try:
         metadata = SubmissionMetadata(
             full_name=full_name,
@@ -101,13 +135,13 @@ async def create_submission(
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors()) from exc
 
-    content = await photo.read()
+    content = _read_upload(photo, settings.max_upload_bytes)
     enforce_upload_policy(content, photo.content_type or "")
 
     classification = classify_photo(content)
 
     content_type = photo.content_type or "application/octet-stream"
-    photo_key = f"{user.id}/{uuid.uuid4()}-{photo.filename or 'photo'}"
+    photo_key = f"{user.id}/{uuid.uuid4()}-{_safe_filename(photo.filename)}"
     upload_photo(photo_key, content, content_type)
 
     submission = SubmissionRepository(session).add(
@@ -133,11 +167,18 @@ async def create_submission(
 @router.get(
     "/me",
     response_model=list[SubmissionWithPhotoUrl],
-    summary="List the caller's own submissions",
+    summary="List the caller's own submissions (newest first, keyset-paginated)",
 )
 def list_my_submissions(
+    limit: int = Query(default=settings.my_submissions_page_size, ge=1, le=200),
+    before: datetime | None = Query(
+        default=None,
+        description="Keyset cursor: return submissions created strictly before this timestamp",
+    ),
     session: Session = Depends(get_session),
     user: AuthenticatedUser = Depends(get_authenticated_user),
 ):
-    submissions = SubmissionRepository(session).list_for_owner(user.id)
+    submissions = SubmissionRepository(session).list_for_owner(
+        user.id, limit=limit, before=before
+    )
     return [serialize_submission(submission) for submission in submissions]

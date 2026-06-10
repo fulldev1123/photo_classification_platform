@@ -21,6 +21,11 @@ def _build_client(endpoint_url: str | None):
         config=Config(
             signature_version="s3v4",
             s3={"addressing_style": "path" if settings.s3_force_path_style else "auto"},
+            # Fail fast on a slow/unavailable object store instead of pinning a
+            # worker for botocore's default 60s timeouts and ~5 legacy retries.
+            connect_timeout=settings.s3_connect_timeout,
+            read_timeout=settings.s3_read_timeout,
+            retries={"max_attempts": settings.s3_max_attempts, "mode": "standard"},
         ),
     )
 

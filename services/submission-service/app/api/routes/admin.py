@@ -15,7 +15,9 @@ from ...schemas import PaginatedSubmissions, SubmissionWithPhotoUrl
 from ..serializers import serialize_submission
 
 router = APIRouter(tags=["admin"])
-rate_limiter = Limiter(key_func=get_remote_address)
+rate_limiter = Limiter(
+    key_func=get_remote_address, storage_uri=settings.rate_limit_storage_uri
+)
 
 
 @router.get(
